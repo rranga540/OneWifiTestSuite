@@ -364,6 +364,10 @@ public:
     int get_radioindex_from_bssid(mac_address_t ap_bssid, unsigned int *radio_index);
     wifi_radio_operationParam_t *cci_get_radio_operation_param(unsigned int radio_index);
     void dump_json(cJSON *json_buff, const char *func, int line);
+    int decode_step_iperf_server(cJSON *step, test_step_params_t *step_config);
+    int validate_iperf_options(std::string args);
+    int decode_step_iperf_client(cJSON *step, test_step_params_t *step_config);
+    int decode_step_configure_eth_client(cJSON *step, test_step_params_t *step_config);
 
     char *get_remote_test_results_loc()
     {
