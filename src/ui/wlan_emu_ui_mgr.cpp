@@ -125,6 +125,7 @@ wifi_vap_info_t *wlan_emu_ui_mgr_t::get_cci_vap_info(char *vap_name)
         return NULL;
     }
     vap_info = &cci_webconfig->radios[radio_index].vaps.vap_map.vap_array[vap_array_index];
+
     return vap_info;
 }
 
@@ -564,6 +565,684 @@ int wlan_emu_ui_mgr_t::decode_step_get_pattern_files(cJSON *step, test_step_para
         __LINE__, step_config->u.get_pattern_files->file_location,
         step_config->u.get_pattern_files->file_pattern,
         step_config->u.get_pattern_files->delete_pattern_files);
+
+    return RETURN_OK;
+}
+
+int wlan_emu_ui_mgr_t::validate_iperf_options(std::string args)
+{
+    const char *optstring = "p:f:i:D1VJvsc:ub:t:n:k:l:P:Rw:B:M:N46S:L:ZO:F:A:T:C:dI:mhX:";
+    int opt;
+    int client_flag = 0;
+    int server_flag = 0;
+    char role = '\0';
+    char *slash;
+    int argc = 0;
+
+    /* Based on iperf, which is:
+     * Copyright (c) 2014-2022, The Regents of the University of California,
+     * through Lawrence Berkeley National Laboratory
+     * Licensed under the BSD-3 License
+     */
+
+    struct option longopts[] = {
+        { "port",                  required_argument, NULL, 'p'                               },
+        { "format",                required_argument, NULL, 'f'                               },
+        { "interval",              required_argument, NULL, 'i'                               },
+        { "daemon",                no_argument,       NULL, 'D'                               },
+        { "one-off",               no_argument,       NULL, '1'                               },
+        { "verbose",               no_argument,       NULL, 'V'                               },
+        { "json",                  no_argument,       NULL, 'J'                               },
+        { "json-stream",           no_argument,       NULL, IPERF_OPT_JSON_STREAM             },
+        { "version",               no_argument,       NULL, 'v'                               },
+        { "server",                no_argument,       NULL, 's'                               },
+        { "client",                required_argument, NULL, 'c'                               },
+        { "udp",                   no_argument,       NULL, 'u'                               },
+        { "bitrate",               required_argument, NULL, 'b'                               },
+        { "bandwidth",             required_argument, NULL, 'b'                               },
+        { "server-bitrate-limit",  required_argument, NULL, IPERF_OPT_SERVER_BITRATE_LIMIT    },
+        { "time",                  required_argument, NULL, 't'                               },
+        { "bytes",                 required_argument, NULL, 'n'                               },
+        { "blockcount",            required_argument, NULL, 'k'                               },
+        { "length",                required_argument, NULL, 'l'                               },
+        { "parallel",              required_argument, NULL, 'P'                               },
+        { "reverse",               no_argument,       NULL, 'R'                               },
+        { "bidir",                 no_argument,       NULL, IPERF_OPT_BIDIRECTIONAL           },
+        { "window",                required_argument, NULL, 'w'                               },
+        { "bind",                  required_argument, NULL, 'B'                               },
+        { "bind-dev",              required_argument, NULL, IPERF_OPT_BIND_DEV                },
+        { "cport",                 required_argument, NULL, IPERF_OPT_CLIENT_PORT             },
+        { "set-mss",               required_argument, NULL, 'M'                               },
+        { "no-delay",              no_argument,       NULL, 'N'                               },
+        { "version4",              no_argument,       NULL, '4'                               },
+        { "version6",              no_argument,       NULL, '6'                               },
+        { "tos",                   required_argument, NULL, 'S'                               },
+        { "dscp",                  required_argument, NULL, IPERF_OPT_DSCP                    },
+        { "extra-data",            required_argument, NULL, IPERF_OPT_EXTRA_DATA              },
+        { "flowlabel",             required_argument, NULL, 'L'                               },
+        { "zerocopy",              no_argument,       NULL, 'Z'                               },
+        { "omit",                  required_argument, NULL, 'O'                               },
+        { "file",                  required_argument, NULL, 'F'                               },
+        { "repeating-payload",     no_argument,       NULL, IPERF_OPT_REPEATING_PAYLOAD       },
+        { "timestamps",            optional_argument, NULL, IPERF_OPT_TIMESTAMPS              },
+        { "affinity",              required_argument, NULL, 'A'                               },
+        { "title",                 required_argument, NULL, 'T'                               },
+        { "congestion",            required_argument, NULL, 'C'                               },
+        { "linux-congestion",      required_argument, NULL, 'C'                               },
+        { "sctp",                  no_argument,       NULL, IPERF_OPT_SCTP                    },
+        { "nstreams",              required_argument, NULL, IPERF_OPT_NUMSTREAMS              },
+        { "xbind",                 required_argument, NULL, 'X'                               },
+        { "pidfile",               required_argument, NULL, 'I'                               },
+        { "logfile",               required_argument, NULL, IPERF_OPT_LOGFILE                 },
+        { "forceflush",            no_argument,       NULL, IPERF_OPT_FORCEFLUSH              },
+        { "get-server-output",     no_argument,       NULL, IPERF_OPT_GET_SERVER_OUTPUT       },
+        { "udp-counters-64bit",    no_argument,       NULL, IPERF_OPT_UDP_COUNTERS_64BIT      },
+        { "no-fq-socket-pacing",   no_argument,       NULL, IPERF_OPT_NO_FQ_SOCKET_PACING     },
+        { "dont-fragment",         no_argument,       NULL, IPERF_OPT_DONT_FRAGMENT           },
+        { "skip-rx-copy",          no_argument,       NULL, IPERF_OPT_SKIP_RX_COPY            },
+        { "username",              required_argument, NULL, IPERF_OPT_CLIENT_USERNAME         },
+        { "rsa-public-key-path",   required_argument, NULL, IPERF_OPT_CLIENT_RSA_PUBLIC_KEY   },
+        { "rsa-private-key-path",  required_argument, NULL, IPERF_OPT_SERVER_RSA_PRIVATE_KEY  },
+        { "authorized-users-path", required_argument, NULL, IPERF_OPT_SERVER_AUTHORIZED_USERS },
+        { "time-skew-threshold",   required_argument, NULL, IPERF_OPT_SERVER_SKEW_THRESHOLD   },
+        { "use-pkcs1-padding",     no_argument,       NULL, IPERF_OPT_USE_PKCS1_PADDING       },
+        { "fq-rate",               required_argument, NULL, IPERF_OPT_FQ_RATE                 },
+        { "pacing-timer",          required_argument, NULL, IPERF_OPT_PACING_TIMER            },
+        { "connect-timeout",       required_argument, NULL, IPERF_OPT_CONNECT_TIMEOUT         },
+        { "idle-timeout",          required_argument, NULL, IPERF_OPT_IDLE_TIMEOUT            },
+        { "rcv-timeout",           required_argument, NULL, IPERF_OPT_RCV_TIMEOUT             },
+        { "snd-timeout",           required_argument, NULL, IPERF_OPT_SND_TIMEOUT             },
+        { "cntl-ka",               optional_argument, NULL, IPERF_OPT_CNTL_KA                 },
+        { "mptcp",                 no_argument,       NULL, 'm'                               },
+        { "debug",                 optional_argument, NULL, 'd'                               },
+        { "help",                  no_argument,       NULL, 'h'                               },
+        { NULL,                    0,                 NULL, 0                                 }
+    };
+
+    std::istringstream iss(args);
+    std::vector<std::string> tokens;
+    std::string token;
+    while (iss >> token) {
+        tokens.push_back(token);
+    }
+
+    tokens.insert(tokens.begin(), "program_name"); // dummy string
+
+    std::vector<std::unique_ptr<char[]>> string_storage;
+    std::vector<char *> argv;
+    for (const auto &t : tokens) {
+        auto buf = std::make_unique<char[]>(t.size() + 1);
+        std::strncpy(buf.get(), t.c_str(), t.size());
+        buf[t.size()] = '\0';
+        argv.push_back(buf.get());
+        string_storage.push_back(std::move(buf));
+    }
+    argv.push_back(nullptr);
+    argc = static_cast<int>(argv.size() - 1);
+    optind = 0;
+    opterr = 0;
+
+    while ((opt = getopt_long(argc, argv.data(), optstring, longopts, NULL)) != -1) {
+        switch (opt) {
+        case 'p':
+            if (atoi(optarg) < 1 || atoi(optarg) > 65535) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid iperf option 'p' : %d\n",
+                    __func__, __LINE__, atoi(optarg));
+                return RETURN_ERR;
+            }
+            break;
+        case 'f':
+            if (!optarg) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid iperf option 'f' \n",
+                    __func__, __LINE__);
+                return RETURN_ERR;
+            }
+            if (*optarg == 'k' || *optarg == 'K' || *optarg == 'm' || *optarg == 'M' ||
+                *optarg == 'g' || *optarg == 'G' || *optarg == 't' || *optarg == 'T') {
+                break;
+            } else {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid iperf input for 'f' \n",
+                    __func__, __LINE__);
+                return RETURN_ERR;
+            }
+            break;
+        case 'i':
+            if ((atof(optarg) < IPERF_MIN_INTERVAL || atof(optarg) > IPERF_MAX_INTERVAL) &&
+                atof(optarg) != 0) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid interval : %f\n", __func__,
+                    __LINE__, atof(optarg));
+                return RETURN_ERR;
+            }
+            break;
+        case 'D':
+            server_flag = 1;
+            break;
+        case '1':
+            server_flag = 1;
+            break;
+        case 'V':
+            break;
+        case 'J':
+            break;
+        case IPERF_OPT_JSON_STREAM:
+            break;
+        case 's':
+            if (role == 'c') {
+                wlan_emu_print(wlan_emu_log_level_err,
+                    "%s:%d Invalid c option, both 'c' and 's' are enabled\n", __func__, __LINE__);
+                return RETURN_ERR;
+            }
+            role = 's';
+            break;
+        case 'c':
+            if (role == 's') {
+                wlan_emu_print(wlan_emu_log_level_err,
+                    "%s:%d Invalid s option, both 'c' and 's' are enabled\n", __func__, __LINE__);
+                return RETURN_ERR;
+            }
+            role = 'c';
+            if (optarg == NULL || strlen(optarg) == 0) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid optarg for client\n",
+                    __func__, __LINE__);
+                return RETURN_ERR;
+            }
+
+            if (is_valid_ip(optarg) == RETURN_OK) {
+                break;
+            }
+
+            if (is_resolvable_hostname(optarg) == RETURN_OK) {
+                break;
+            }
+
+            wlan_emu_print(wlan_emu_log_level_err,
+                "%s:%d unable to resolve hostname or ipaddress\n", __func__, __LINE__);
+            return RETURN_ERR;
+            break;
+        case 'u':
+            client_flag = 1;
+            break;
+        case IPERF_OPT_SCTP:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_NUMSTREAMS:
+            client_flag = 1;
+            break;
+        case 'b':
+            slash = strchr(optarg, '/');
+            if (slash) {
+                *slash = '\0';
+                ++slash;
+                if (atoi(slash) <= 0 || atoi(slash) > IPERF_MAX_BURST) {
+                    wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid 'b' option : %d\n",
+                        __func__, __LINE__, atoi(slash));
+                    return RETURN_ERR;
+                }
+            }
+            client_flag = 1;
+            break;
+        case IPERF_OPT_SERVER_BITRATE_LIMIT:
+            slash = strchr(optarg, '/');
+            if (slash) {
+                *slash = '\0';
+                ++slash;
+                if (atof(slash) != 0 &&
+                    (atof(slash) < IPERF_MIN_INTERVAL || atof(slash) > IPERF_MAX_INTERVAL)) {
+                    wlan_emu_print(wlan_emu_log_level_err,
+                        "%s:%d Invalid server bitrate limit : %f\n", __func__, __LINE__,
+                        atof(slash));
+                    return RETURN_ERR;
+                }
+            }
+            server_flag = 1;
+            break;
+        case 't':
+            if (atoi(optarg) > IPERF_MAX_TIME || atoi(optarg) < 0) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid 't' option : %d\n", __func__,
+                    __LINE__, atoi(optarg));
+                return RETURN_ERR;
+            }
+            client_flag = 1;
+            break;
+        case 'n':
+            client_flag = 1;
+            break;
+        case 'k':
+            client_flag = 1;
+            break;
+        case 'l':
+            client_flag = 1;
+            break;
+        case 'P':
+            if (atoi(optarg) > IPERF_MAX_STREAMS) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid 'P' option : %d\n", __func__,
+                    __LINE__, atoi(optarg));
+                return RETURN_ERR;
+            }
+            client_flag = 1;
+            break;
+        case 'R':
+            client_flag = 1;
+            break;
+        case IPERF_OPT_BIDIRECTIONAL:
+            client_flag = 1;
+            break;
+        case 'w':
+            client_flag = 1;
+            break;
+
+        case 'B':
+            break;
+        case IPERF_OPT_CLIENT_PORT:
+            if (atoi(optarg) < 1 || atoi(optarg) > 65535) {
+                wlan_emu_print(wlan_emu_log_level_err,
+                    "%s:%d Invalid opt client port option : %d\n", __func__, __LINE__,
+                    atoi(optarg));
+                return RETURN_ERR;
+            }
+            break;
+        case 'M':
+            if (atoi(optarg) > IPERF_MAX_MSS) {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid 'M' option : %d\n", __func__,
+                    __LINE__, atoi(optarg));
+                return RETURN_ERR;
+            }
+            client_flag = 1;
+            break;
+        case 'N':
+            client_flag = 1;
+            break;
+        case '4':
+            break;
+        case '6':
+            break;
+        case 'S':
+            client_flag = 1;
+            break;
+        case IPERF_OPT_DSCP:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_EXTRA_DATA:
+            client_flag = 1;
+            break;
+        case 'L': // Need to check this
+            client_flag = 1;
+            break;
+        case 'X':
+            break;
+        case 'Z':
+            client_flag = 1;
+            break;
+        case IPERF_OPT_REPEATING_PAYLOAD:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_TIMESTAMPS:
+            break;
+        case 'O':
+            client_flag = 1;
+            break;
+        case 'F':
+            break;
+        case IPERF_OPT_IDLE_TIMEOUT:
+            server_flag = 1;
+            break;
+        case IPERF_OPT_RCV_TIMEOUT:
+            break;
+        case IPERF_OPT_SND_TIMEOUT:
+            break;
+        case IPERF_OPT_CNTL_KA:
+            break;
+            break;
+        case 'T':
+            client_flag = 1;
+            break;
+        case 'C':
+            client_flag = 1;
+            break;
+        case 'I':
+            break;
+        case IPERF_OPT_LOGFILE:
+            break;
+        case IPERF_OPT_FORCEFLUSH:
+            break;
+        case IPERF_OPT_GET_SERVER_OUTPUT:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_UDP_COUNTERS_64BIT:
+            break;
+        case IPERF_OPT_NO_FQ_SOCKET_PACING:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_FQ_RATE:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_DONT_FRAGMENT:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_CLIENT_USERNAME:
+            break;
+        case IPERF_OPT_CLIENT_RSA_PUBLIC_KEY:
+            break;
+        case IPERF_OPT_SERVER_RSA_PRIVATE_KEY:
+            break;
+        case IPERF_OPT_SERVER_AUTHORIZED_USERS:
+            break;
+        case IPERF_OPT_SERVER_SKEW_THRESHOLD:
+            break;
+        case IPERF_OPT_USE_PKCS1_PADDING:
+            break;
+        case IPERF_OPT_SKIP_RX_COPY:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_PACING_TIMER:
+            client_flag = 1;
+            break;
+        case IPERF_OPT_CONNECT_TIMEOUT:
+            client_flag = 1;
+            break;
+        case 'm':
+            break;
+        default:
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid option for iperf %c\n", __func__,
+                __LINE__, opt);
+            return RETURN_ERR;
+        }
+
+        if (role == 'c' && server_flag) {
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid option '%c' for client role",
+                __func__, __LINE__, opt);
+            return RETURN_ERR;
+        }
+        if (role == 's' && client_flag) {
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d Invalid option '%c' for server role",
+                __func__, __LINE__, opt);
+            return RETURN_ERR;
+        }
+    }
+
+    return RETURN_OK;
+}
+
+int wlan_emu_ui_mgr_t::decode_step_iperf_server(cJSON *step, test_step_params_t *step_config)
+{
+    cJSON *config;
+    cJSON *param;
+    iperf_server_t *iperf_server;
+    step_config->param_type = step_param_type_config_iperf_server;
+
+    iperf_server = step_config->u.iperf_server;
+
+    dump_json(step, __func__, __LINE__);
+
+    config = cJSON_GetObjectItem(step, "IperfServerOptions");
+
+    iperf_server->input_operation = iperf_operation_type_invalid;
+    if (update_json_param_integer(config, "StopServerStepNumber", &param) == RETURN_OK) {
+        iperf_server->input_operation = iperf_operation_type_stop;
+
+        iperf_server->u.stop_conf.stop_step_number = param->valuedouble;
+        wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: stop_step_number : %d\n", __func__, __LINE__,
+            iperf_server->u.stop_conf.stop_step_number);
+        param = cJSON_GetObjectItem(step, "ConnectionType");
+        if (param != NULL && (cJSON_IsString(param) == true) && (param->valuestring != NULL)) {
+            if (strcmp(param->valuestring, "Real") == 0) {
+                iperf_server->u.stop_conf.connection_type = client_connection_type_real;
+            } else {
+                iperf_server->u.stop_conf.connection_type = client_connection_type_no_user_input;
+            }
+        }
+    } else if (update_json_param_integer(config, "ServerInterfaceStepNumber", &param) ==
+        RETURN_OK) {
+        iperf_server->input_operation = iperf_operation_type_start;
+
+        iperf_server->u.start_conf.interface_step_number = param->valuedouble;
+
+        decode_param_string(config, "ServerLogResultName", param);
+        snprintf(iperf_server->u.start_conf.input_filename,
+            sizeof(iperf_server->u.start_conf.input_filename), "%s", param->valuestring);
+
+        decode_param_string(config, "ServerIperfOptions", param);
+        snprintf(iperf_server->u.start_conf.cmd_options,
+            sizeof(iperf_server->u.start_conf.cmd_options), "%s", param->valuestring);
+        wlan_emu_print(wlan_emu_log_level_dbg,
+            "%s:%d: interface_step_number : %d ServerLogResultName : %s cmd_options : %s\n",
+            __func__, __LINE__, iperf_server->u.start_conf.interface_step_number,
+            iperf_server->u.start_conf.input_filename, iperf_server->u.start_conf.cmd_options);
+
+        if (validate_iperf_options(iperf_server->u.start_conf.cmd_options) == RETURN_ERR) {
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Invalid iperf server options : %s\n",
+                __func__, __LINE__, iperf_server->u.start_conf.cmd_options);
+            return RETURN_ERR;
+        }
+        param = cJSON_GetObjectItem(step, "ConnectionType");
+        wlan_emu_print(wlan_emu_log_level_err, "After parsing connection type\n");
+        if (param != NULL && (cJSON_IsString(param) == true) && (param->valuestring != NULL)) {
+            wlan_emu_print(wlan_emu_log_level_err, "connection type is there\n");
+            if (strcmp(param->valuestring, "Real") == 0) {
+                iperf_server->u.start_conf.connection_type = client_connection_type_real;
+            } else {
+                iperf_server->u.start_conf.connection_type = client_connection_type_no_user_input;
+            }
+        }
+    }
+
+    if (iperf_server->input_operation == iperf_operation_type_invalid) {
+        wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Invalid server operation\n", __func__,
+            __LINE__);
+        delete iperf_server;
+        return RETURN_ERR;
+    }
+
+    return RETURN_OK;
+}
+
+int wlan_emu_ui_mgr_t::decode_step_configure_eth_client(cJSON *step,
+    test_step_params_t *step_config)
+{
+    cJSON *param;
+    decode_param_bool(step, "ConfigureEthernetClient", param);
+    if (param->type & cJSON_False) {
+        wlan_emu_print(wlan_emu_log_level_err, "%s:%d: ConfigureEthernetClient is false\n",
+            __func__, __LINE__);
+        return RETURN_ERR;
+    }
+    step_config->param_type = step_param_type_ethernet_lan_interface;
+
+    decode_param_integer(step, "TestDuration", param);
+    step_config->u.eth_lan_client->duration = param->valuedouble;
+
+    wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: TestDuration : %d\n", __func__, __LINE__,
+        step_config->u.eth_lan_client->duration);
+
+    return RETURN_OK;
+}
+
+int wlan_emu_ui_mgr_t::decode_step_configure_upgrade_or_reboot(cJSON *step,
+    test_step_params_t *step_config)
+{
+    if (step == NULL || step_config == NULL || step_config->u.upgrade_or_reboot == NULL) {
+        wlan_emu_print(wlan_emu_log_level_err,
+            "%s:%d: step or upgrade_or_reboot is NULL\n", __func__, __LINE__);
+        return RETURN_ERR;
+    }
+
+    cJSON *config = cJSON_GetObjectItem(step, "UpgradeOrReboot");
+    if (config == NULL) {
+        wlan_emu_print(wlan_emu_log_level_err,
+            "%s:%d: UpgradeOrReboot object not found\n", __func__, __LINE__);
+        return RETURN_ERR;
+    }
+
+    step_config->param_type = step_param_type_upgrade_or_reboot;
+
+    cJSON *build_name = cJSON_GetObjectItem(config, "build_name");
+    if (cJSON_IsString(build_name) && build_name->valuestring != NULL) {
+        step_config->u.upgrade_or_reboot->build_name = build_name->valuestring;
+    }
+
+    cJSON *fr_enabled = cJSON_GetObjectItem(config, "is_fr_enabled");
+    if (fr_enabled != NULL && cJSON_IsBool(fr_enabled)) {
+        step_config->u.upgrade_or_reboot->is_fr_enabled = cJSON_IsTrue(fr_enabled);
+    }
+
+    cJSON *param = cJSON_GetObjectItem(config, "is_logging_enabled");
+    if (cJSON_IsBool(param)) {
+        step_config->u.upgrade_or_reboot->is_logging_enabled = cJSON_IsTrue(param);
+        if (step_config->u.upgrade_or_reboot->is_logging_enabled == true) {
+            step_config->u.upgrade_or_reboot->logging_step_numbers = queue_create();
+            if (step_config->u.upgrade_or_reboot->logging_step_numbers == NULL) {
+                wlan_emu_print(wlan_emu_log_level_err,
+                    "%s:%d: Failed to create logging_step_numbers queue\n", __func__, __LINE__);
+                return RETURN_ERR;
+            }
+        }
+    } else {
+        wlan_emu_print(wlan_emu_log_level_err,
+            "%s:%d: is_logging_enabled is missing or invalid\n", __func__, __LINE__);
+        return RETURN_ERR;
+    }
+
+    if (step_config->u.upgrade_or_reboot->is_logging_enabled == true) {
+        cJSON *item;
+        cJSON *step_list = cJSON_GetObjectItem(config, "logging_step_numbers");
+        if (step_list == NULL || cJSON_IsArray(step_list) == false) {
+            wlan_emu_print(wlan_emu_log_level_err,
+                "%s:%d: logging_step_numbers is missing or not an array\n", __func__, __LINE__);
+            return RETURN_ERR;
+        }
+
+        cJSON_ArrayForEach(item, step_list) {
+            cJSON *num = cJSON_GetObjectItem(item, "step_numbers");
+            if (num && cJSON_IsNumber(num)) {
+                step_number_entry_t *entry = (step_number_entry_t *)calloc(1,
+                    sizeof(step_number_entry_t));
+                if (entry == NULL) {
+                    wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Memory allocation failed\n",
+                        __func__, __LINE__);
+                    return RETURN_ERR;
+                }
+                entry->step_number = num->valueint;
+                if (step_config->u.upgrade_or_reboot->logging_step_numbers == NULL) {
+                    wlan_emu_print(wlan_emu_log_level_err, "%s:%d: logging_step_numbers is NULL\n",
+                        __func__, __LINE__);
+                    free(entry);
+                    return RETURN_ERR;
+                }
+                queue_push(step_config->u.upgrade_or_reboot->logging_step_numbers, entry);
+            } else {
+                wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Invalid or missing step_numbers\n",
+                    __func__, __LINE__);
+                return RETURN_ERR;
+            }
+        }
+    }
+    return RETURN_OK;
+}
+
+int wlan_emu_ui_mgr_t::decode_step_iperf_client(cJSON *step, test_step_params_t *step_config)
+{
+    cJSON *config;
+    cJSON *param;
+    cJSON *options;
+    iperf_client_t *iperf_client;
+    step_config->param_type = step_param_type_config_iperf_client;
+
+    iperf_client = step_config->u.iperf_client;
+    config = cJSON_GetObjectItem(step, "IperfClientOptions");
+
+    iperf_client->input_operation = iperf_operation_type_invalid;
+    if (update_json_param_integer(config, "StopClientStepNumber", &param) == RETURN_OK) {
+        iperf_client->input_operation = iperf_operation_type_stop;
+
+        iperf_client->u.stop_conf.stop_step_number = param->valuedouble;
+        wlan_emu_print(wlan_emu_log_level_info, "%s:%d: stop_step_number : %d\n", __func__,
+            __LINE__, iperf_client->u.stop_conf.stop_step_number);
+
+    } else if (update_json_param_integer(config, "ClientInterfaceStepNumber", &param) ==
+        RETURN_OK) {
+        iperf_client->input_operation = iperf_operation_type_start;
+
+        iperf_client->u.start_conf.interface_step_number = param->valuedouble;
+
+        decode_param_integer(config, "ServerStepNumber", param);
+        iperf_client->u.start_conf.server_step_number = param->valuedouble;
+
+        options = cJSON_GetObjectItem(config, "ClientOptions");
+
+        if (options == NULL) {
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d: ClientOptions object is NULL\n",
+                __func__, __LINE__);
+            return RETURN_ERR;
+        }
+
+        decode_param_string(options, "ClientLogResultName", param);
+        snprintf(iperf_client->u.start_conf.input_filename,
+            sizeof(iperf_client->u.start_conf.input_filename), "%s", param->valuestring);
+
+        decode_param_string(options, "ClientIperfOptions", param);
+        snprintf(iperf_client->u.start_conf.cmd_options,
+            sizeof(iperf_client->u.start_conf.cmd_options), "%s", param->valuestring);
+        wlan_emu_print(wlan_emu_log_level_info,
+            "%s:%d: interface_step_number : %d ServerLogResultName : %s ServerStepNumber : "
+            "%d cmd_options : %s\n",
+            __func__, __LINE__, iperf_client->u.start_conf.interface_step_number,
+            iperf_client->u.start_conf.input_filename,
+            iperf_client->u.start_conf.server_step_number, iperf_client->u.start_conf.cmd_options);
+
+        if (validate_iperf_options(iperf_client->u.start_conf.cmd_options) == RETURN_ERR) {
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Invalid iperf client options : %s\n",
+                __func__, __LINE__, iperf_client->u.start_conf.cmd_options);
+            return RETURN_ERR;
+        }
+        param = cJSON_GetObjectItem(step, "ConnectionType");
+        if (param != NULL && (cJSON_IsString(param) == true) && (param->valuestring != NULL)) {
+            if (strcmp(param->valuestring, "Real") == 0) {
+                iperf_client->u.start_conf.connection_type = client_connection_type_real;
+            } else {
+                iperf_client->u.start_conf.connection_type = client_connection_type_no_user_input;
+            }
+        }
+
+        param = cJSON_GetObjectItem(step, "Device_Id");
+        if (param != NULL && (cJSON_IsString(param) == true) && (param->valuestring != NULL)) {
+            snprintf(iperf_client->u.start_conf.device_id,
+                sizeof(iperf_client->u.start_conf.device_id), "%s", param->valuestring);
+        }
+
+        param = cJSON_GetObjectItem(step, "Platform");
+        if (param != NULL && (cJSON_IsString(param) == true) && (param->valuestring != NULL)) {
+            if (strcmp(param->valuestring, "Iphone") == 0) {
+                iperf_client->u.start_conf.sta_type = sta_model_type_iphone;
+            } else if (strcmp(param->valuestring, "Pixel") == 0) {
+                iperf_client->u.start_conf.sta_type = sta_model_type_pixel;
+            } else if (strcmp(param->valuestring, "Android") == 0) {
+                iperf_client->u.start_conf.sta_type = sta_model_type_android;
+            } else if (strcmp(param->valuestring, "iOS") == 0) {
+                iperf_client->u.start_conf.sta_type = sta_model_type_ios;
+            } else if (strcmp(param->valuestring, "Windows") == 0) {
+                iperf_client->u.start_conf.sta_type = sta_model_type_windows;
+            }
+        }
+
+        param = cJSON_GetObjectItem(step, "Prefer");
+        if (param != NULL && (cJSON_IsArray(param) == true)) {
+            cJSON *prefer_item = NULL;
+            cJSON_ArrayForEach(prefer_item, param) {
+                if (cJSON_IsString(prefer_item) && (prefer_item->valuestring != NULL)) {
+                    snprintf(iperf_client->u.start_conf.service_prefer,
+                        sizeof(iperf_client->u.start_conf.service_prefer), "%s",
+                        prefer_item->valuestring);
+                }
+            }
+        }
+    }
+
+    if (iperf_client->input_operation == iperf_operation_type_invalid) {
+        wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Invalid client operation\n", __func__,
+            __LINE__);
+        delete iperf_client;
+        return RETURN_ERR;
+    }
 
     return RETURN_OK;
 }
@@ -3965,6 +4644,12 @@ int wlan_emu_ui_mgr_t::cci_post_result_to_tda(unsigned int endpoint_type, char *
             }
             source_file.close();
         }
+    } else if (endpoint_type == tc_endpoint_type_conn_request) {
+        snprintf(result_url, sizeof(result_url), "%s/real_client_conn_request", server_address);
+    } else if (endpoint_type == tc_endpoint_type_disconn_request) {
+        snprintf(result_url, sizeof(result_url), "%s/real_client_disconn_request", server_address);
+    } else if (endpoint_type == tc_endpoint_type_iperf_request) {
+        snprintf(result_url, sizeof(result_url), "%s/iperf_request", server_address);
     } else {
         cci_error_code = ECURLPOST;
         return RETURN_ERR;
