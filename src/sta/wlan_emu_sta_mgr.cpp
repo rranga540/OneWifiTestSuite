@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <vector>
 
 extern "C" {
 INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map);
@@ -688,6 +689,19 @@ void generate_client_mac(unsigned char mac[6]) {
     mac[0] = (mac[0] & 0xFE) | 0x02;
 }
 
+// Holds everything phase 2 (connect) needs for one client,
+// captured during phase 1 (scan) before the shared
+// sta_test_config->sta_vap_config struct gets overwritten
+// by the next iteration.
+struct sta_prep_ctx_t {
+    int dev_id;
+    int vap_index;
+    sta_key_t key;
+    wlan_emu_sta_t *sta;
+    sta_info_t *sta_info;
+    wifi_bss_info_t bss;
+};
+
 int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
 {
     wlan_emu_sta_t *sta;
@@ -705,12 +719,20 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
     mac_addr_str_t map_mac_str;
     mac_addr_str_t connected_client_mac_str;
 
+    std::vector<sta_prep_ctx_t> prepared_stas;
+    prepared_stas.reserve(sta_test_config->client_count);
+
+    /* ================= PHASE 1: scan for every client ================= */
     for (int i = 0; i < sta_test_config->client_count; i++) {
         if ((dev_id = find_first_free_dev()) == -1) {
             wlan_emu_print(wlan_emu_log_level_err, "%s:%d: could not find free device\n", __func__,
                 __LINE__);
             return -1;
         }
+
+        // Claim this device immediately so the next iteration of this loop
+        // picks a *different* free device instead of the same one again.
+        set_dev_busy(dev_id);
 
         wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: found free device at pos: %d\n", __func__,
             __LINE__, dev_id);
@@ -777,6 +799,7 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
         wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: Rssi : %d Noise : %d Bitrate : %d\n",
             __func__, __LINE__, pre_connect_profile->pre_assoc_rssi,
             pre_connect_profile->pre_assoc_noise, pre_connect_profile->pre_assoc_bitrate);
+
         // create the heart beat data
         heart_beat_data = new (std::nothrow) heart_beat_data_t;
         if (heart_beat_data == NULL) {
@@ -828,6 +851,8 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
         sta->send_mac_update(&mac_update);
 
         free(map);
+        map = NULL;
+
         if (sta_test_config->is_station_prototype_enabled == true) {
             if (configure_proto_types_on_sta(sta_test_config) == RETURN_ERR) {
                 wlan_emu_print(wlan_emu_log_level_err,
@@ -837,8 +862,8 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
                 return RETURN_ERR;
             }
         }
-        memset(&bss, 0, sizeof(bss));
 
+        memset(&bss, 0, sizeof(bss));
         bss.freq = convert_channel_to_freq(sta_test_config->radio_oper_param->band,
             sta_test_config->radio_oper_param->channel);
         wlan_emu_print(wlan_emu_log_level_dbg,
@@ -851,19 +876,38 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
         memcpy(bss.bssid, sta_test_config->sta_vap_config->u.sta_info.bssid, sizeof(mac_address_t));
         chan_list[0] = sta_test_config->radio_oper_param->channel;
         bss.oper_freq_band = sta_test_config->radio_oper_param->band;
+
         wifi_hal_startScan(sta_info->rdk_radio_index, WIFI_RADIO_SCAN_MODE_OFFCHAN, 500, 1,
             chan_list);
         usleep(500000);
-        if (wifi_hal_connect(sta_test_config->sta_vap_config->vap_index, &bss) != RETURN_OK) {
+
+        // Stash everything phase 2 needs for this client. In particular,
+        // vap_index is captured here because sta_test_config->sta_vap_config
+        // is a single shared struct that gets overwritten every iteration.
+        sta_prep_ctx_t ctx;
+        ctx.dev_id = dev_id;
+        ctx.vap_index = sta_test_config->sta_vap_config->vap_index;
+        memcpy(ctx.key, key, sizeof(sta_key_t));
+        ctx.sta = sta;
+        ctx.sta_info = sta_info;
+        ctx.bss = bss;
+        prepared_stas.push_back(ctx);
+    }
+
+    /* ============= PHASE 2: connect + push, one client at a time ============= */
+    for (auto &ctx : prepared_stas) {
+        if (wifi_hal_connect(ctx.vap_index, &ctx.bss) != RETURN_OK) {
             wlan_emu_print(wlan_emu_log_level_err,
                 "%s:%d: hal connect failed for dev_id : %d for vap_index : %d\n", __func__,
-                __LINE__, dev_id, sta_test_config->sta_vap_config->vap_index);
-            delete (sta);
-            return RETURN_ERR;
+                __LINE__, ctx.dev_id, ctx.vap_index);
+            delete (ctx.sta);
+            continue;
         }
+
         if (sta_test_config->connected_client_info_q == NULL) {
             wlan_emu_print(wlan_emu_log_level_err, "%s:%d: connected_client_info_q is NULL\n",
                 __func__, __LINE__);
+            delete (ctx.sta);
             return RETURN_ERR;
         }
 
@@ -872,29 +916,31 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
         if (connected_client_info == NULL) {
             wlan_emu_print(wlan_emu_log_level_err,
                 "%s:%d: Failed to allocate memory for connected_client_info\n", __func__, __LINE__);
-            delete (sta);
+            delete (ctx.sta);
             return RETURN_ERR;
         }
         memset(connected_client_info, 0, sizeof(connected_client_info_t));
-        memcpy(connected_client_info->sta_mac, sta_test_config->sta_vap_config->u.sta_info.mac,
-            sizeof(mac_addr_t));
-        memcpy(connected_client_info->key, key, sizeof(sta_key_t));
+        memcpy(connected_client_info->sta_mac, ctx.sta_info->mac, sizeof(mac_addr_t));
+        memcpy(connected_client_info->key, ctx.key, sizeof(sta_key_t));
         connected_client_info->is_station_associated = true;
         queue_push(sta_test_config->connected_client_info_q, connected_client_info);
+
         wlan_emu_print(wlan_emu_log_level_info,
-            "%s:%d: Connected client with MAC : %s with key : %s and vap_index : %d\n", __func__, __LINE__,
-            to_mac_str(connected_client_info->sta_mac, connected_client_mac_str),
-            connected_client_info->key, sta_info->index);
+            "%s:%d: Connected client with MAC : %s with key : %s and vap_index : %d\n", __func__,
+            __LINE__, to_mac_str(connected_client_info->sta_mac, connected_client_mac_str),
+            connected_client_info->key, ctx.sta_info->index);
 
         wlan_emu_print(wlan_emu_log_level_dbg,
             "%s:%d: hal connect succesful for dev_id : %d for vap_index : %d\n", __func__, __LINE__,
-            dev_id, sta_info->index);
-        hash_map_put(m_sta_map, strdup(key), sta);
-        set_dev_busy(dev_id);
+            ctx.dev_id, ctx.sta_info->index);
+
+        hash_map_put(m_sta_map, strdup(ctx.key), ctx.sta);
+
+        wlan_emu_print(wlan_emu_log_level_info,
+            "%s:%d: wait for 3 seconds before connecting next client\n", __func__, __LINE__);
+        WaitForDuration(3000);
     }
-    if (pre_connect_profile != NULL) {
-        delete (pre_connect_profile);
-    }
+
     return 0;
 }
 
