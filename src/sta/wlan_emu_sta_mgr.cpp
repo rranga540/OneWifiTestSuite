@@ -663,7 +663,7 @@ int wlan_emu_sim_sta_mgr_t::reconnect_sta(sta_test_t *sta_test_config, connected
     snprintf(bss.ssid, sizeof(bss.ssid), "%s", sta_test_config->sta_vap_config->u.sta_info.ssid);
     memcpy(bss.bssid, sta_test_config->sta_vap_config->u.sta_info.bssid, sizeof(mac_address_t));
     bss.oper_freq_band = sta_test_config->radio_oper_param->band;
-    WaitForDuration(500);
+    WaitForDuration(2000);
     if (wifi_hal_connect(sta_test_config->sta_vap_config->vap_index, &bss) != RETURN_OK) {
         wlan_emu_print(wlan_emu_log_level_err, "%s:%d: hal connect failed for vap_index : %d\n",
             __func__, __LINE__, sta_test_config->sta_vap_config->vap_index);
@@ -935,8 +935,8 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
         hash_map_put(m_sta_map, strdup(ctx.key), ctx.sta);
 
         wlan_emu_print(wlan_emu_log_level_info,
-            "%s:%d: wait for 0.5 seconds before connecting next client\n", __func__, __LINE__);
-        WaitForDuration(500);
+            "%s:%d: wait for 2 seconds before connecting next client\n", __func__, __LINE__);
+        WaitForDuration(2000);
     }
 
     return 0;
