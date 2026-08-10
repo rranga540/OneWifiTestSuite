@@ -31,7 +31,6 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
-#include <vector>
 
 extern "C" {
 INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map);
@@ -686,19 +685,6 @@ void generate_client_mac(unsigned char mac[6]) {
     mac[0] = (mac[0] & 0xFE) | 0x02;
 }
 
-// Holds everything phase 2 (connect) needs for one client,
-// captured during phase 1 (scan) before the shared
-// sta_test_config->sta_vap_config struct gets overwritten
-// by the next iteration.
-struct sta_prep_ctx_t {
-    int dev_id;
-    int vap_index;
-    sta_key_t key;
-    wlan_emu_sta_t *sta;
-    sta_info_t *sta_info;
-    wifi_bss_info_t bss;
-};
-
 int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
 {
     wlan_emu_sta_t *sta;
@@ -727,8 +713,6 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
             return -1;
         }
 
-        // Claim this device immediately so the next iteration of this loop
-        // picks a *different* free device instead of the same one again.
         set_dev_busy(dev_id);
 
         wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: found free device at pos: %d\n", __func__,
@@ -878,9 +862,6 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
             chan_list);
         usleep(500000);
 
-        // Stash everything phase 2 needs for this client. In particular,
-        // vap_index is captured here because sta_test_config->sta_vap_config
-        // is a single shared struct that gets overwritten every iteration.
         sta_prep_ctx_t ctx;
         ctx.dev_id = dev_id;
         ctx.vap_index = sta_test_config->sta_vap_config->vap_index;
