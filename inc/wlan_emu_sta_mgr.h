@@ -25,16 +25,6 @@
 #include "wifi_hal.h"
 #include "wlan_emu_common.h"
 #include "wlan_emu_msg_data.h"
-#include <vector>
-
-struct sta_prep_ctx_t {
-    int dev_id;
-    int vap_index;
-    sta_key_t key;
-    wlan_emu_sta_t *sta;
-    sta_info_t *sta_info;
-    wifi_bss_info_t bss;
-};
 
 class wlan_emu_sim_sta_mgr_t {
     hash_map_t *m_sta_map;

@@ -31,6 +31,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdint.h>
+#include <vector>
 
 extern "C" {
 INT wifi_hal_createVAP(wifi_radio_index_t index, wifi_vap_info_map_t *map);
@@ -44,6 +45,15 @@ INT wifi_hal_setRadioOperatingParameters(wifi_radio_index_t index,
 int convert_channel_to_freq(int band, unsigned char chan);
 int wifi_hal_sm_deinit(int vap_index);
 }
+
+struct sta_prep_ctx_t {
+    int dev_id;
+    int vap_index;
+    sta_key_t key;
+    wlan_emu_sta_t *sta;
+    sta_info_t *sta_info;
+    wifi_bss_info_t bss;
+};
 
 static void ovs_fdb_flush(char *bridge_name)
 {
