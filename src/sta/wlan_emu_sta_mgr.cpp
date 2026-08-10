@@ -677,7 +677,7 @@ int wlan_emu_sim_sta_mgr_t::reconnect_sta(sta_test_t *sta_test_config, connected
             __func__, __LINE__, sta_test_config->sta_vap_config->vap_index);
         return RETURN_ERR;
     }
-
+    WaitForDuration(2000);
     wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: hal connect succesful for vap_index : %d\n",
         __func__, __LINE__, sta_info->index);
 
@@ -923,6 +923,7 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
             ctx.dev_id, ctx.sta_info->index);
 
         hash_map_put(m_sta_map, strdup(ctx.key), ctx.sta);
+        WaitForDuration(2000);
     }
 
     return 0;
