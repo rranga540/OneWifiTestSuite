@@ -129,7 +129,7 @@ void wlan_emu_sim_sta_mgr_t::send_heart_beat(char *key, heart_beat_data_t *heart
     }
 }
 
-void send_client_heart_beat(sta_test_t *sta_test_config)
+void wlan_emu_sim_sta_mgr_t::send_client_heart_beat(sta_test_t *sta_test_config)
 {
     wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: Sending heartbeat to connected clients\n",
         __func__, __LINE__);

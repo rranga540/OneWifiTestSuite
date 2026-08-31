@@ -66,6 +66,7 @@ public:
     int clear_interface_data(sta_test_t *sta_test_config);
     int disconnect_sta(sta_test_t *sta_test_config, connected_client_info_t *client_info);
     int add_sta(sta_test_t *sta_test_config);
+    void send_client_heart_beat(sta_test_t *sta_test_config);
     void remove_all_sta(unsigned int vap_id);
     void send_heart_beat(char *key, heart_beat_data_t *heart_beat_data);
     sta_info_t *get_devid_sta_info(unsigned int dev_id);
