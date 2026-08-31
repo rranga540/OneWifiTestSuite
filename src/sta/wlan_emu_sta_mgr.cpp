@@ -129,6 +129,74 @@ void wlan_emu_sim_sta_mgr_t::send_heart_beat(char *key, heart_beat_data_t *heart
     }
 }
 
+void send_client_heart_beat(sta_test_t *sta_test_config)
+{
+    wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: Sending heartbeat to connected clients\n",
+        __func__, __LINE__);
+
+    if (sta_test_config == nullptr || sta_test_config->connected_client_info_q == nullptr) {
+        wlan_emu_print(wlan_emu_log_level_err,
+            "%s:%d: Invalid STA test configuration or client queue\n", __func__, __LINE__);
+        return;
+    }
+
+    const uint client_count = queue_count(sta_test_config->connected_client_info_q);
+
+    wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: Connected client count=%u\n", __func__, __LINE__,
+        client_count);
+
+    for (uint client_id = 0; client_id < client_count; ++client_id) {
+        connected_client_info_t *client_info = static_cast<connected_client_info_t *>(
+            queue_peek(sta_test_config->connected_client_info_q, client_id));
+
+        if (client_info == nullptr) {
+            wlan_emu_print(wlan_emu_log_level_err, "%s:%d: Client info is NULL for client_id=%u\n",
+                __func__, __LINE__, client_id);
+            continue;
+        }
+
+        wlan_emu_print(wlan_emu_log_level_dbg,
+            "%s:%d: Processing client_id=%u, key=%u, MAC=%02x:%02x:%02x:%02x:%02x:%02x\n", __func__,
+            __LINE__, client_id, client_info->key, client_info->sta_mac[0], client_info->sta_mac[1],
+            client_info->sta_mac[2], client_info->sta_mac[3], client_info->sta_mac[4],
+            client_info->sta_mac[5]);
+
+        heart_beat_data_t *heart_beat_data = new (std::nothrow) heart_beat_data_t {};
+
+        if (heart_beat_data == nullptr) {
+            wlan_emu_print(wlan_emu_log_level_err,
+                "%s:%d: Unable to allocate heart beat data for client_id=%u, "
+                "key=%u\n",
+                __func__, __LINE__, client_id, client_info->key);
+            continue;
+        }
+
+        memcpy(heart_beat_data->mac, client_info->sta_mac, sizeof(mac_address_t));
+
+        heart_beat_data->rssi = -25;
+        heart_beat_data->noise = -85;
+
+        wlan_emu_print(wlan_emu_log_level_dbg,
+            "%s:%d: Sending heartbeat: client_id=%u, key=%u, "
+            "MAC=%02x:%02x:%02x:%02x:%02x:%02x, RSSI=%d, noise=%d\n",
+            __func__, __LINE__, client_id, client_info->key, heart_beat_data->mac[0],
+            heart_beat_data->mac[1], heart_beat_data->mac[2], heart_beat_data->mac[3],
+            heart_beat_data->mac[4], heart_beat_data->mac[5], heart_beat_data->rssi,
+            heart_beat_data->noise);
+
+        send_heart_beat(client_info->key, heart_beat_data);
+
+        wlan_emu_print(wlan_emu_log_level_dbg,
+            "%s:%d: Heartbeat sent successfully for client_id=%u, key=%u\n", __func__, __LINE__,
+            client_id, client_info->key);
+
+        delete heart_beat_data;
+    }
+
+    wlan_emu_print(wlan_emu_log_level_dbg, "%s:%d: Completed heartbeat processing for %u clients\n",
+        __func__, __LINE__, client_count);
+}
+
 void add_to_bridge(char *interface, char *bridge)
 {
     FILE *fp;
@@ -923,6 +991,7 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
             ctx.dev_id, ctx.sta_info->index);
 
         hash_map_put(m_sta_map, strdup(ctx.key), ctx.sta);
+        send_client_heart_beat(sta_test_config);
         WaitForDuration(2000);
     }
 
