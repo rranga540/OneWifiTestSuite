@@ -868,7 +868,7 @@ int wlan_emu_sim_sta_mgr_t::add_sta(sta_test_t *sta_test_config)
         chan_list[0] = sta_test_config->radio_oper_param->channel;
         bss.oper_freq_band = sta_test_config->radio_oper_param->band;
 
-        wifi_hal_startScan(sta_info->rdk_radio_index, WIFI_RADIO_SCAN_MODE_OFFCHAN, 500, 1,
+        wifi_hal_startScan(sta_info->rdk_radio_index, WIFI_RADIO_SCAN_MODE_ONCHAN, 500, 1,
             chan_list);
         usleep(500000);
 
