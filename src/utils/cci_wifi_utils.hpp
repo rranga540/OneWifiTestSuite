@@ -68,6 +68,7 @@ int http_post_file(const std::string &url, const std::string &file_path, long &s
 int get_last_substring_after_slash(const char *str, char *sub_string, int sub_str_len, int &error_code);
 int decode_param_string_fn(cJSON *json, const char *key, cJSON *&value);
 int WaitForDuration(int timeInMs);
+int execute_process_once(std::string dhcp_cmd, pid_t *pid, bool wait_pid);
 
 const uint8_t MAC_BCAST_ADDR[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 

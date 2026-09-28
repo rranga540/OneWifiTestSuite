@@ -21,6 +21,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <fstream>
+#include <getopt.h>
 
 namespace fs = std::experimental::filesystem;
 
